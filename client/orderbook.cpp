@@ -94,7 +94,8 @@ struct OrderBook {
     PriceLevel bestBid;
     PriceLevel bestAsk;
     map<int, Order> orderMap; // orderId -> order
-    deque<Trade> trades;
+    vector<Trade> trades;
+//    deque<Trade> trades;
     mutex m;
     TopOfBook tob;
 
@@ -131,8 +132,7 @@ void publishTopOfSellBook(const string& symbol, const TopOfBook& tob, OrderBook 
     }
 }
 
-TopOfBook getTopOfBook(const string& symbol, map<string,priority_queue<Order> > & buy_order_books,
-map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
+TopOfBook getTopOfBook(const string& symbol, OrderBook &orderBook) {
 
     bool isBuyChanged = false;
     bool isSellChanged = false;
@@ -214,12 +214,9 @@ void publishTrade(const Trade& trade) {
          << trade.price << "," << trade.qty << endl;
 }
 
-void handleNewOrder(const Order& order, map<string, priority_queue<Order> >& buy_order_books,
-                  map<string, priority_queue<Order> >& sell_order_books, vector<Trade>& trades,
-                  mutex& orderBooksMutex, OrderBook &orderBook) {
+void handleNewOrder(const Order& order, OrderBook &orderBook) {
     orderBook.orderMap[order.userOrderId] = order;
     if (order.side == 'B') {
-        buy_order_books[order.symbol].push(order); // delete it from here
         BuyBook &buyBook = orderBook.buyBook[order.symbol];
         PriceLevel &priceLevel = buyBook.limitMap[order.price];
         priceLevel.totalVolume += order.qty;
@@ -235,7 +232,6 @@ void handleNewOrder(const Order& order, map<string, priority_queue<Order> >& buy
         }
 
     } else if (order.side == 'S') {
-        sell_order_books[order.symbol].push(order); // delete it from here
         SellBook &sellBook = orderBook.sellBook[order.symbol];
         PriceLevel &priceLevel = sellBook.limitMap[order.price];
         priceLevel.totalVolume += order.qty;
@@ -266,9 +262,7 @@ void deleteFromPriceLevel(const Order& order, PriceLevel& priceLevel) {
 }
 
 
-void handleCancelOrder(const Order& order, map<string, priority_queue<Order> >& buy_order_books,
-                    map<string, priority_queue<Order> >& sell_order_books, vector<Trade>& trades,
-                    mutex& orderBooksMutex, OrderBook &orderBook) {
+void handleCancelOrder(const Order& order, OrderBook &orderBook) {
     Order &orderToDelete = orderBook.orderMap[order.userOrderId];
     orderBook.orderMap.erase(order.userOrderId);
     if (orderToDelete.side == 'B') {
@@ -314,9 +308,7 @@ string getTradeMessage(Trade &trade) {
     return tradeMessage;
 }
 
-void handleMatch(const Order& order, map<string, priority_queue<Order> >& buy_order_books,
-                    map<string, priority_queue<Order> >& sell_order_books, vector<Trade>& trades,
-                    mutex& orderBooksMutex, OrderBook &orderBook) {
+void handleMatch(const Order& order, vector<Trade>& trades, OrderBook &orderBook) {
     // Matching logic
 //    cout<<"Matching logic"<<endl;
     BuyBook buyBook = orderBook.buyBook[order.symbol];
@@ -395,16 +387,15 @@ void handleMatch(const Order& order, map<string, priority_queue<Order> >& buy_or
 //    }
 }
 
-void processOrder(const Order& order, map<string, priority_queue<Order> >& buy_order_books,
-                  map<string, priority_queue<Order> >& sell_order_books, vector<Trade>& trades,
+void processOrder(const Order& order, vector<Trade>& trades,
                   mutex& orderBooksMutex, OrderBook &orderBook) {
     lock_guard<mutex> lock(orderBooksMutex);
     if (order.type == OrderType::NEW) {
-        handleNewOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+        handleNewOrder(order, orderBook);
     } else if (order.type == OrderType::CANCEL) {
-        handleCancelOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+        handleCancelOrder(order, orderBook);
     }
-    handleMatch(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+    handleMatch(order, trades, orderBook);
 }
 
 Order parseOrder(const std::vector<std::string>& inputLine) {
@@ -424,8 +415,7 @@ Order parseOrder(const std::vector<std::string>& inputLine) {
     return order;
 }
 
-void processRequest(string line, map<string, priority_queue<Order> > &buy_order_books,
-                    map<string, priority_queue<Order> > &sell_order_books, vector<Trade> &trades, mutex& orderBooksMutex,
+void processRequest(string line, vector<Trade> &trades, mutex& orderBooksMutex,
                     OrderBook &orderBook) {
     if (line.empty() || line[0] == '#') {
         return;
@@ -437,26 +427,23 @@ void processRequest(string line, map<string, priority_queue<Order> > &buy_order_
     string cell;
     while (getline(iss, cell, ',')) {
         inputLine.push_back(cell);
-//        cout<<cell<<"_";
     }
-//    cout<< ":::::"<<inputLine.size()<<":::\n";
-
 
     if (inputLine[0] == "N") {
         Order order = { OrderType::NEW, stoi(inputLine[1]), stoi(inputLine[6]),
                         inputLine[2], stoi(inputLine[3]), stoi(inputLine[4]),
                         inputLine[5][0]};
-        processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+        processOrder(order, trades, orderBooksMutex, orderBook);
         publishOrderAcknowledgement(order.user, order.userOrderId);
-        getTopOfBook(inputLine[2], buy_order_books, sell_order_books, orderBook);
+        getTopOfBook(inputLine[2], orderBook);
 //        exit(0);
         return;
     } else if (inputLine[0] == "C") {
         Order order = { OrderType::CANCEL, stoi(inputLine[1]), stoi(inputLine[2]),
                         "", 0, 0, ' '};
-        processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+        processOrder(order, trades, orderBooksMutex, orderBook);
         publishCancelAcknowledgement(order.user, order.userOrderId);
-        getTopOfBook(inputLine[2], buy_order_books, sell_order_books, orderBook);
+        getTopOfBook(inputLine[2], orderBook);
     } else if (inputLine[0] == "F") {
         orderBook.flush();
         cout << "\n" << endl;
@@ -470,46 +457,22 @@ int main() {
 
     OrderBook orderBook;
 
-    map<string, priority_queue<Order> > buy_order_books;
-    map<string, priority_queue<Order> > sell_order_books;
+//    map<string, priority_queue<Order> > buy_order_books;
+//    map<string, priority_queue<Order> > sell_order_books;
     vector<Trade> trades;
     mutex orderBooksMutex;
 
     while (getline(file, line)) {
-        processRequest(line, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
-        continue;
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
-
-        vector<string> inputLine;
-        istringstream iss(line);
-        string cell;
-        while (getline(iss, cell, ',')) {
-            inputLine.push_back(cell);
-        }
-
-        if (inputLine[0] == "N") {
-            Order order = { OrderType::NEW, stoi(inputLine[1]), stoi(inputLine[6]),
-                        inputLine[2], stoi(inputLine[3]), stoi(inputLine[4]),
-                        inputLine[5][1]};
-            processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
-            publishOrderAcknowledgement(order.user, order.userOrderId);
-        } else if (inputLine[0] == "C") {
-            Order order = { OrderType::CANCEL, stoi(inputLine[1]), stoi(inputLine[2]),
-                        "", 0, 0, ' '};
-            processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
-        } else if (inputLine[0] == "F") {
-        }
+        processRequest(line, trades, orderBooksMutex, orderBook);
     }
 
     // Print trades
-    int count = 1;
-    for (const auto& trade : trades) {
-        cout<<count<<": ";
-        count++;
-        publishTrade(trade);
-    }
+//    int count = 1;
+//    for (const auto& trade : trades) {
+//        cout<<count<<": ";
+//        count++;
+//        publishTrade(trade);
+//    }
 
     return 0;
 }
