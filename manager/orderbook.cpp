@@ -8,7 +8,10 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <deque>
+#include <queue>
 #include <thread>
+#include <mutex>
 #include <list>
 #include <algorithm>
 using namespace std;
@@ -62,7 +65,7 @@ struct TopOfBook {
 struct PriceLevel {
     int price;
     int totalVolume;
-    list<Order> orders; // Need DLL implementation here
+    list<Order> orders; // DLL implementation
     void reset() {
         price = 0;
         totalVolume = 0;
@@ -112,7 +115,6 @@ struct OrderBook {
 };
 
 TopOfBook tob;
-
 
 void publishTopOfBuyBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook) {
     if (orderBook.tob.bidQty > 0) {
@@ -190,6 +192,9 @@ TopOfBook getTopOfBook(const string& symbol, OrderBook &orderBook) {
     }
     return tob;
 }
+
+
+
 
 void publishOrderAcknowledgement(int user, int userOrderId) {
     cout << "A," << user << "," << userOrderId << endl;
@@ -408,12 +413,13 @@ void processRequest(string line, vector<Trade> &trades, mutex& orderBooksMutex,
 
 
 int main() {
-    string inputFileName = "input.csv";
-    ifstream file(inputFileName);
+    ifstream file("input.csv");
     string line;
 
     OrderBook orderBook;
 
+//    map<string, priority_queue<Order> > buy_order_books;
+//    map<string, priority_queue<Order> > sell_order_books;
     vector<Trade> trades;
     mutex orderBooksMutex;
 
