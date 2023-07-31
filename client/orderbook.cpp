@@ -117,67 +117,99 @@ struct OrderBook {
 
 TopOfBook tob;
 
-void publishTopOfBook2(const string& symbol, const TopOfBook& tob) {
-    if (tob.bidQty > 0) {
-        cout << "B,B," << tob.bidPrice << "," << tob.bidQty << endl;
-    } else {
-        cout << "B,B,-,-" << endl;
-    }
-
-    if (tob.askQty > 0) {
-        cout << "B,S," << tob.askPrice << "," << tob.askQty << endl;
-    } else {
-        cout << "B,S,-,-" << endl;
-    }
-}
-
-void publishTopOfBuyBook(const string& symbol, const TopOfBook& tob) {
-    if (tob.bidQty > 0) {
-        cout << "B,B," << tob.bidPrice << "," << tob.bidQty << endl;
+void publishTopOfBuyBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook) {
+    if (orderBook.tob.bidQty > 0) {
+        cout << "B,B," << orderBook.tob.bidPrice << "," << orderBook.tob.bidQty << endl;
     } else {
         cout << "B,B,-,-" << endl;
     }
 }
 
-void publishTopOfSellBook(const string& symbol, const TopOfBook& tob) {
-    if (tob.askQty > 0) {
-        cout << "B,S," << tob.askPrice << "," << tob.askQty << endl;
+void publishTopOfSellBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook) {
+    if (orderBook.tob.askQty > 0) {
+        cout << "B,S," << orderBook.tob.askPrice << "," << orderBook.tob.askQty << endl;
     } else {
         cout << "B,S,-,-" << endl;
     }
 }
 
-TopOfBook getTopOfBook(const string& symbol, map<string,deque<Order> > & buy_order_books,
-map<string, deque<Order> > & sell_order_books) {
+TopOfBook getTopOfBook(const string& symbol, map<string,priority_queue<Order> > & buy_order_books,
+map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
 
     bool isBuyChanged = false;
     bool isSellChanged = false;
-    if (!buy_order_books[symbol].empty()) {
-        if(buy_order_books[symbol].front().price != tob.bidPrice) {
-            isBuyChanged = true;
+    BuyBook &buyBook = orderBook.buyBook[symbol];
+    SellBook &sellBook = orderBook.sellBook[symbol];
+//    cout << "buyBook.limitMap.size() = " << buyBook.limitMap.size() << endl;
+//    cout << "sellBook.limitMap.size() = " << sellBook.limitMap.size() << endl;
+    if( !buyBook.limitMap.empty()) {
+        // Get an iterator pointing to the first element
+        auto it = buyBook.limitMap.begin();
+        int price = it->first;
+//        cout<< "price = " << price << endl;
+        PriceLevel &priceLevel = it->second;
+        if (price != orderBook.bestBid.price || priceLevel.totalVolume != orderBook.bestBid.totalVolume) {
+            orderBook.bestBid.price = price;
+            orderBook.bestBid.totalVolume = priceLevel.totalVolume;
+//            isBuyChanged = true;
+//            cout<< "bestBid.price = " << orderBook.bestBid.price << endl;
         }
-        tob.bidPrice = buy_order_books[symbol].front().price;
-        tob.bidQty = buy_order_books[symbol].front().qty;
+
+        // update orderBook.tob
+        if(price != orderBook.tob.bidPrice || priceLevel.totalVolume != orderBook.tob.bidQty) {
+            orderBook.tob.bidPrice = price;
+            orderBook.tob.bidQty = priceLevel.totalVolume;
+            isBuyChanged = true;
+//            cout<< "tob.bidPrice = " << orderBook.tob.bidPrice << endl;
+        }
     } else {
-        tob.bidPrice = tob.bidQty = 0;
-//        isBuyChanged= true;
+        if(orderBook.bestBid.price != 0) {
+//            isBuyChanged = true;
+        }
+        orderBook.bestBid.price = 0;
+        orderBook.bestBid.totalVolume = 0;
+        if(orderBook.tob.bidPrice != 0) {
+            isBuyChanged = true;
+            orderBook.tob.bidPrice = 0;
+            orderBook.tob.bidQty = 0;
+        }
     }
 
-    if (sell_order_books[symbol].size() > 1) {
-        if(sell_order_books[symbol].front().price != tob.askPrice) {
+    if( !sellBook.limitMap.empty()) {
+        // Get an iterator pointing to the first element
+        auto it = sellBook.limitMap.begin();
+        int price = it->first;
+        PriceLevel &priceLevel = it->second;
+        if (price != orderBook.bestAsk.price || priceLevel.totalVolume != orderBook.bestAsk.totalVolume) {
+            orderBook.bestAsk.price = price;
+            orderBook.bestAsk.totalVolume = priceLevel.totalVolume;
+//            isSellChanged = true;
+        }
+        // update orderBook.tob
+        if(price != orderBook.tob.askPrice || priceLevel.totalVolume != orderBook.tob.askQty) {
+            orderBook.tob.askPrice = price;
+            orderBook.tob.askQty = priceLevel.totalVolume;
             isSellChanged = true;
         }
-        tob.askPrice = sell_order_books[symbol].back().price;
-        tob.askQty = sell_order_books[symbol].back().qty;
     } else {
-        tob.askPrice = tob.askQty = 0;
-//        isSellChanged = true;
+        if(orderBook.bestAsk.price != 0) {
+//            isSellChanged = true;
+        }
+        orderBook.bestAsk.price = 0;
+        orderBook.bestAsk.totalVolume = 0;
+        if(orderBook.tob.askPrice != 0) {
+            isSellChanged = true;
+            orderBook.tob.askPrice = 0;
+            orderBook.tob.askQty = 0;
+        }
     }
+
+//    orderBook.tob.bidPrice = orderBook.bestBid.price;
     if(isSellChanged) {
-        publishTopOfSellBook(symbol, tob);
+        publishTopOfSellBook(symbol, orderBook.tob, orderBook);
     }
     if(isBuyChanged) {
-        publishTopOfBuyBook(symbol, tob);
+        publishTopOfBuyBook(symbol, orderBook.tob, orderBook);
     }
     return tob;
 }
@@ -261,16 +293,37 @@ void handleCancelOrder(const Order& order, map<string, priority_queue<Order> >& 
     Order &orderToDelete = orderBook.orderMap[order.userOrderId];
     orderBook.orderMap.erase(order.userOrderId);
     if (orderToDelete.side == 'B') {
+        BuyBook &buyBook = orderBook.buyBook[orderToDelete.symbol];
         PriceLevel &priceLevel = orderBook.buyBook[orderToDelete.symbol].limitMap[orderToDelete.price];
         deleteFromPriceLevel(orderToDelete, priceLevel);
         if(priceLevel.totalVolume == 0) {
             orderBook.buyBook[orderToDelete.symbol].limitMap.erase(orderToDelete.price);
         }
+        if(orderToDelete.price == orderBook.bestBid.price) {
+            // Get an iterator pointing to the first element
+            auto it = buyBook.limitMap.begin();
+
+            if(priceLevel.totalVolume == 0) {
+                orderBook.bestBid = it->second;
+                publishTopOfBuyBook(orderToDelete.symbol, tob, orderBook);
+            }
+        }
+
     } else if (orderToDelete.side == 'S') {
+        SellBook &sellBook = orderBook.sellBook[orderToDelete.symbol];
         PriceLevel &priceLevel = orderBook.sellBook[orderToDelete.symbol].limitMap[orderToDelete.price];
         deleteFromPriceLevel(orderToDelete, priceLevel);
         if(priceLevel.totalVolume == 0) {
-            orderBook.buyBook[orderToDelete.symbol].limitMap.erase(orderToDelete.price);
+            orderBook.sellBook[orderToDelete.symbol].limitMap.erase(orderToDelete.price);
+        }
+        if(orderToDelete.price == orderBook.bestAsk.price) {
+            // Get an iterator pointing to the first element
+            auto it = sellBook.limitMap.begin();
+
+            if(priceLevel.totalVolume == 0) {
+                orderBook.bestAsk = it->second;
+                publishTopOfSellBook(orderToDelete.symbol, tob, orderBook);
+            }
         }
     }
 }
@@ -416,32 +469,17 @@ void processRequest(string line, map<string, priority_queue<Order> > &buy_order_
                         inputLine[5][0]};
         processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
         publishOrderAcknowledgement(order.user, order.userOrderId);
-//        getTopOfBook(inputLine[2], buy_order_books, sell_order_books);
+        getTopOfBook(inputLine[2], buy_order_books, sell_order_books, orderBook);
+//        exit(0);
         return;
     } else if (inputLine[0] == "C") {
         Order order = { OrderType::CANCEL, stoi(inputLine[1]), stoi(inputLine[2]),
                         "", 0, 0, ' '};
         processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+        getTopOfBook(inputLine[2], buy_order_books, sell_order_books, orderBook);
     } else if (inputLine[0] == "F") {
-        cout << "\n" << endl;
-//        cout << "F," << inputLine[1] << "," << inputLine[2] << "," << inputLine[3] << endl;
         orderBook.flush();
-//        lock_guard<mutex> lock(orderBooksMutex);
-//        for (const auto& [symbol, buyOrders] : buy_order_books) {
-//            if (!buyOrders.empty()) {
-//                publishTopOfBook(symbol, 'B', buyOrders.front().price, buyOrders.front().qty);
-//            } else {
-//                cout << "B,B,-,-" << endl;
-//            }
-//        }
-//
-//        for (const auto& [symbol, sellOrders] : sell_order_books) {
-//            if (!sellOrders.empty()) {
-//                publishTopOfBook(symbol, 'S', sellOrders.front().price, sellOrders.front().qty);
-//            } else {
-//                cout << "B,S,-,-" << endl;
-//            }
-//        }
+        cout << "\n" << endl;
     }
 }
 
@@ -458,7 +496,6 @@ int main() {
     mutex orderBooksMutex;
 
     while (getline(file, line)) {
-//        cout<<"sell_order_bookssell_order_bookssell_order_books" <<sell_order_books.size()<<endl;
         processRequest(line, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
         continue;
         if (line.empty() || line[0] == '#') {
