@@ -24,6 +24,11 @@ struct Order {
     int price;
     int qty;
     char side;
+
+    // Define order criteria
+    bool operator<(const Order &rhs) const {
+        return price < rhs.price; // orders with higher priority value come first
+    }
 };
 
 struct Trade {
@@ -163,45 +168,23 @@ void handleCancelOrder(const Order& order, map<string, deque<Order> >& buy_order
     }
 }
 
-void processOrder(const Order& order, map<string, deque<Order> >& buy_order_books,
-                  map<string, deque<Order> >& sell_order_books, vector<Trade>& trades,
-                  mutex& orderBooksMutex) {
-    lock_guard<mutex> lock(orderBooksMutex);
+string getTradeMessage(Trade &trade) {
+    string tradeMessage = "T," + to_string(trade.userIdBuy) + "," + to_string(trade.userOrderIdBuy) + ","
+                          + to_string(trade.userIdSell) + "," + to_string(trade.userOrderIdSell) + ","
+                          + to_string(trade.price) + "," + to_string(trade.qty);
+    return tradeMessage;
+}
 
-    if (order.type == OrderType::NEW) {
-        handleNewOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex);
-//        if (order.side == 'B') {
-//            buy_order_books[order.symbol].push_back(order);
-//        } else if (order.side == 'S') {
-//            sell_order_books[order.symbol].push_back(order);
-//        }
-    } else if (order.type == OrderType::CANCEL) {
-        handleCancelOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex);
-//        if (order.side == 'B') {
-//            deque<Order>& buyOrders = buy_order_books[order.symbol];
-//            for (auto it = buyOrders.begin(); it != buyOrders.end(); ++it) {
-//                if (it->userOrderId == order.userOrderId) {
-//                    buyOrders.erase(it);
-//                    publishCancelAcknowledgement(order.user, order.userOrderId);
-//                    break;
-//                }
-//            }
-//        } else if (order.side == 'S') {
-//            deque<Order>& sellOrders = sell_order_books[order.symbol];
-//            for (auto it = sellOrders.begin(); it != sellOrders.end(); ++it) {
-//                if (it->userOrderId == order.userOrderId) {
-//                    sellOrders.erase(it);
-//                    publishCancelAcknowledgement(order.user, order.userOrderId);
-//                    break;
-//                }
-//            }
-//        }
-    }
-
+void handleMatch(const Order& order, map<string, deque<Order> >& buy_order_books,
+                    map<string, deque<Order> >& sell_order_books, vector<Trade>& trades,
+                    mutex& orderBooksMutex) {
     // Matching logic
+    cout<<"Matching logic"<<endl;
     if (buy_order_books.count(order.symbol) && sell_order_books.count(order.symbol)) {
         auto& buyOrders = buy_order_books[order.symbol];
         auto& sellOrders = sell_order_books[order.symbol];
+        cout<<buyOrders.size()<<endl;
+        cout<<sellOrders.size()<<endl;
 
         while (!buyOrders.empty() && !sellOrders.empty() && buyOrders.front().price >= sellOrders.front().price) {
             int tradeQty = min(buyOrders.front().qty, sellOrders.front().qty);
@@ -214,6 +197,7 @@ void processOrder(const Order& order, map<string, deque<Order> >& buy_order_book
                     sellOrders.front().price,
                     tradeQty
             };
+            cout<< getTradeMessage(trade) << endl;
 
             trades.push_back(trade);
 
@@ -229,6 +213,18 @@ void processOrder(const Order& order, map<string, deque<Order> >& buy_order_book
             }
         }
     }
+}
+
+void processOrder(const Order& order, map<string, deque<Order> >& buy_order_books,
+                  map<string, deque<Order> >& sell_order_books, vector<Trade>& trades,
+                  mutex& orderBooksMutex) {
+    lock_guard<mutex> lock(orderBooksMutex);
+    if (order.type == OrderType::NEW) {
+        handleNewOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex);
+    } else if (order.type == OrderType::CANCEL) {
+        handleCancelOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex);
+    }
+    handleMatch(order, buy_order_books, sell_order_books, trades, orderBooksMutex);
 }
 
 Order parseOrder(const std::vector<std::string>& inputLine) {
