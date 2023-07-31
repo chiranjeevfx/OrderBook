@@ -177,11 +177,11 @@ map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
     } else {
         orderBook.bestAsk.price = 0;
         orderBook.bestAsk.totalVolume = 0;
-//        if(orderBook.tob.askPrice != 0) {
-//            isSellChanged = true;
-//            orderBook.tob.askPrice = 0;
-//            orderBook.tob.askQty = 0;
-//        }
+        if(orderBook.tob.askPrice != 0) {
+            isSellChanged = true;
+            orderBook.tob.askPrice = 0;
+            orderBook.tob.askQty = 0;
+        }
     }
 
     if(isSellChanged) {
@@ -455,6 +455,7 @@ void processRequest(string line, map<string, priority_queue<Order> > &buy_order_
         Order order = { OrderType::CANCEL, stoi(inputLine[1]), stoi(inputLine[2]),
                         "", 0, 0, ' '};
         processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
+        publishCancelAcknowledgement(order.user, order.userOrderId);
         getTopOfBook(inputLine[2], buy_order_books, sell_order_books, orderBook);
     } else if (inputLine[0] == "F") {
         orderBook.flush();
@@ -492,43 +493,21 @@ int main() {
             Order order = { OrderType::NEW, stoi(inputLine[1]), stoi(inputLine[6]),
                         inputLine[2], stoi(inputLine[3]), stoi(inputLine[4]),
                         inputLine[5][1]};
-//            Order order = parseOrder(inputLine);
-//            Order order(OrderType::NEW, std::stoi(inputLine[1]), std::stoi(inputLine[6]),
-//                        inputLine[2], std::stoi(inputLine[3]), std::stoi(inputLine[4]),
-//                        inputLine[5][0]);
-//            cout<< "order.sideorder.sideorder.sideorder.side" <<order.side<< "...";
             processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
             publishOrderAcknowledgement(order.user, order.userOrderId);
-//            cout<<"Symbol is"<<inputLine[2]<<endl;
-//            getTopOfBook(inputLine[2], buy_order_books, sell_order_books, orderBook);
         } else if (inputLine[0] == "C") {
             Order order = { OrderType::CANCEL, stoi(inputLine[1]), stoi(inputLine[2]),
                         "", 0, 0, ' '};
             processOrder(order, buy_order_books, sell_order_books, trades, orderBooksMutex, orderBook);
         } else if (inputLine[0] == "F") {
-//            cout << "\n" << endl;
-//            lock_guard<mutex> lock(orderBooksMutex);
-//            for (const auto& [symbol, buyOrders] : buy_order_books) {
-//                if (!buyOrders.empty()) {
-////                    publishTopOfBook(symbol, 'B', buyOrders.front().price, buyOrders.front().qty);
-//                    publishTopOfBook(symbol, 'B', buyOrders.front().price, buyOrders.front().qty);
-//                } else {
-//                    cout << "B,B,-,-" << endl;
-//                }
-//            }
-//
-//            for (const auto& [symbol, sellOrders] : sell_order_books) {
-//                if (!sellOrders.empty()) {
-//                    publishTopOfBook(symbol, 'S', sellOrders.front().price, sellOrders.front().qty);
-//                } else {
-//                    cout << "B,S,-,-" << endl;
-//                }
-//            }
         }
     }
 
     // Print trades
+    int count = 1;
     for (const auto& trade : trades) {
+        cout<<count<<": ";
+        count++;
         publishTrade(trade);
     }
 
