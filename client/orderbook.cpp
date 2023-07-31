@@ -35,8 +35,6 @@ struct Order {
 
     // Define the equality operator.
     bool operator==(const Order& other) const {
-        // Replace with your actual comparison logic.
-        // This could compare all data members, or just certain ones, depending on what makes sense for your use case.
         return userOrderId == other.userOrderId;
     }
 };
@@ -83,11 +81,11 @@ struct greater {
 
 
 struct BuyBook {
-    map<int, PriceLevel> limitMap; // price -> PriceLevel
+    map<int, PriceLevel, std::greater<int> > limitMap; // price -> PriceLevel
 };
 
 struct SellBook {
-    map<int, PriceLevel, std::greater<int> > limitMap; // price -> PriceLevel
+    map<int, PriceLevel> limitMap; // price -> PriceLevel
 };
 
 struct OrderBook {
@@ -140,19 +138,14 @@ map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
     bool isSellChanged = false;
     BuyBook &buyBook = orderBook.buyBook[symbol];
     SellBook &sellBook = orderBook.sellBook[symbol];
-//    cout << "buyBook.limitMap.size() = " << buyBook.limitMap.size() << endl;
-//    cout << "sellBook.limitMap.size() = " << sellBook.limitMap.size() << endl;
     if( !buyBook.limitMap.empty()) {
         // Get an iterator pointing to the first element
         auto it = buyBook.limitMap.begin();
         int price = it->first;
-//        cout<< "price = " << price << endl;
         PriceLevel &priceLevel = it->second;
         if (price != orderBook.bestBid.price || priceLevel.totalVolume != orderBook.bestBid.totalVolume) {
             orderBook.bestBid.price = price;
             orderBook.bestBid.totalVolume = priceLevel.totalVolume;
-//            isBuyChanged = true;
-//            cout<< "bestBid.price = " << orderBook.bestBid.price << endl;
         }
 
         // update orderBook.tob
@@ -160,19 +153,10 @@ map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
             orderBook.tob.bidPrice = price;
             orderBook.tob.bidQty = priceLevel.totalVolume;
             isBuyChanged = true;
-//            cout<< "tob.bidPrice = " << orderBook.tob.bidPrice << endl;
         }
     } else {
-        if(orderBook.bestBid.price != 0) {
-//            isBuyChanged = true;
-        }
         orderBook.bestBid.price = 0;
         orderBook.bestBid.totalVolume = 0;
-        if(orderBook.tob.bidPrice != 0) {
-            isBuyChanged = true;
-            orderBook.tob.bidPrice = 0;
-            orderBook.tob.bidQty = 0;
-        }
     }
 
     if( !sellBook.limitMap.empty()) {
@@ -183,7 +167,6 @@ map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
         if (price != orderBook.bestAsk.price || priceLevel.totalVolume != orderBook.bestAsk.totalVolume) {
             orderBook.bestAsk.price = price;
             orderBook.bestAsk.totalVolume = priceLevel.totalVolume;
-//            isSellChanged = true;
         }
         // update orderBook.tob
         if(price != orderBook.tob.askPrice || priceLevel.totalVolume != orderBook.tob.askQty) {
@@ -192,19 +175,15 @@ map<string, priority_queue<Order> > & sell_order_books, OrderBook &orderBook) {
             isSellChanged = true;
         }
     } else {
-        if(orderBook.bestAsk.price != 0) {
-//            isSellChanged = true;
-        }
         orderBook.bestAsk.price = 0;
         orderBook.bestAsk.totalVolume = 0;
-        if(orderBook.tob.askPrice != 0) {
-            isSellChanged = true;
-            orderBook.tob.askPrice = 0;
-            orderBook.tob.askQty = 0;
-        }
+//        if(orderBook.tob.askPrice != 0) {
+//            isSellChanged = true;
+//            orderBook.tob.askPrice = 0;
+//            orderBook.tob.askQty = 0;
+//        }
     }
 
-//    orderBook.tob.bidPrice = orderBook.bestBid.price;
     if(isSellChanged) {
         publishTopOfSellBook(symbol, orderBook.tob, orderBook);
     }
@@ -249,11 +228,10 @@ void handleNewOrder(const Order& order, map<string, priority_queue<Order> >& buy
             orderBook.bestBid.price = order.price;
             orderBook.bestBid.totalVolume = order.qty;
             orderBook.bestBid.orders.push_back(order);
-            publishTopOfBook(order.symbol, 'B', order.price, order.qty);
+//            publishTopOfBook(order.symbol, 'B', order.price, order.qty);
         } else if (order.price == orderBook.bestBid.price) {
             orderBook.bestBid.totalVolume += order.qty;
             orderBook.bestBid.orders.push_back(order);
-            publishTopOfBook(order.symbol, 'B', order.price, orderBook.bestBid.totalVolume);
         }
 
     } else if (order.side == 'S') {
@@ -266,12 +244,13 @@ void handleNewOrder(const Order& order, map<string, priority_queue<Order> >& buy
             orderBook.bestAsk.price = order.price;
             orderBook.bestAsk.totalVolume = order.qty;
             orderBook.bestAsk.orders.push_back(order);
-            publishTopOfBook(order.symbol, 'S', order.price, order.qty);
+//            publishTopOfBook(order.symbol, 'S', order.price, order.qty);
         } else if (order.price == orderBook.bestAsk.price) {
             orderBook.bestAsk.totalVolume += order.qty;
             orderBook.bestAsk.orders.push_back(order);
-            publishTopOfBook(order.symbol, 'S', order.price, orderBook.bestAsk.totalVolume);
+//            publishTopOfBook(order.symbol, 'S', order.price, orderBook.bestAsk.totalVolume);
         }
+//        getTopOfBook(order.symbol, buy_order_books, sell_order_books, orderBook);
     }
 }
 
