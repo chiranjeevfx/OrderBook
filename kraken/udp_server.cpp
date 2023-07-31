@@ -121,23 +121,27 @@ struct OrderBook {
 TopOfBook tob;
 
 
-void publishTopOfBuyBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook) {
+void publishTopOfBuyBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook, ofstream &outputFile) {
     if (orderBook.tob.bidQty > 0) {
+        outputFile << "B,B," << orderBook.tob.bidPrice << "," << orderBook.tob.bidQty << endl;
         cout << "B,B," << orderBook.tob.bidPrice << "," << orderBook.tob.bidQty << endl;
     } else {
+        outputFile << "B,B,-,-" << endl;
         cout << "B,B,-,-" << endl;
     }
 }
 
-void publishTopOfSellBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook) {
+void publishTopOfSellBook(const string& symbol, const TopOfBook& tob, OrderBook &orderBook, ofstream &outputFile) {
     if (orderBook.tob.askQty > 0) {
+        outputFile << "B,S," << orderBook.tob.askPrice << "," << orderBook.tob.askQty << endl;
         cout << "B,S," << orderBook.tob.askPrice << "," << orderBook.tob.askQty << endl;
     } else {
+        outputFile << "B,S,-,-" << endl;
         cout << "B,S,-,-" << endl;
     }
 }
 
-TopOfBook getTopOfBook(const string& symbol, OrderBook &orderBook) {
+void updateTopOfBook(const string& symbol, OrderBook &orderBook, ofstream &outputFile) {
 
     bool isBuyChanged = false;
     bool isSellChanged = false;
@@ -190,29 +194,33 @@ TopOfBook getTopOfBook(const string& symbol, OrderBook &orderBook) {
     }
 
     if(isSellChanged) {
-        publishTopOfSellBook(symbol, orderBook.tob, orderBook);
+        publishTopOfSellBook(symbol, orderBook.tob, orderBook, outputFile);
     }
     if(isBuyChanged) {
-        publishTopOfBuyBook(symbol, orderBook.tob, orderBook);
+        publishTopOfBuyBook(symbol, orderBook.tob, orderBook, outputFile);
     }
-    return tob;
 }
 
-void publishOrderAcknowledgement(int user, int userOrderId) {
+void publishOrderAcknowledgement(int user, int userOrderId, ofstream &outputFile) {
+    outputFile << "A," << user << "," << userOrderId << endl;
     cout << "A," << user << "," << userOrderId << endl;
 }
 
-void publishCancelAcknowledgement(int user, int userOrderId) {
+void publishCancelAcknowledgement(int user, int userOrderId, ofstream &outputFile) {
+    outputFile << "C," << user << "," << userOrderId << endl;
     cout << "C," << user << "," << userOrderId << endl;
 }
 
-void publishTrade(const Trade& trade) {
+void publishTrade(const Trade& trade, ofstream &outputFile) {
+    outputFile << "T," << trade.userIdBuy << "," << trade.userOrderIdBuy << ","
+         << trade.userIdSell << "," << trade.userOrderIdSell << ","
+         << trade.price << "," << trade.qty << endl;
     cout << "T," << trade.userIdBuy << "," << trade.userOrderIdBuy << ","
          << trade.userIdSell << "," << trade.userOrderIdSell << ","
          << trade.price << "," << trade.qty << endl;
 }
 
-void handleNewOrder(const Order& order, OrderBook &orderBook) {
+void handleNewOrder(const Order& order, OrderBook &orderBook, ofstream &outputFile) {
     orderBook.orderMap[order.userOrderId] = order;
     if (order.side == 'B') {
         BuyBook &buyBook = orderBook.buyBook[order.symbol];
@@ -223,7 +231,6 @@ void handleNewOrder(const Order& order, OrderBook &orderBook) {
             orderBook.bestBid.price = order.price;
             orderBook.bestBid.totalVolume = order.qty;
             orderBook.bestBid.orders.push_back(order);
-//            publishTopOfBook(order.symbol, 'B', order.price, order.qty);
         } else if (order.price == orderBook.bestBid.price) {
             orderBook.bestBid.totalVolume += order.qty;
             orderBook.bestBid.orders.push_back(order);
@@ -238,13 +245,10 @@ void handleNewOrder(const Order& order, OrderBook &orderBook) {
             orderBook.bestAsk.price = order.price;
             orderBook.bestAsk.totalVolume = order.qty;
             orderBook.bestAsk.orders.push_back(order);
-//            publishTopOfBook(order.symbol, 'S', order.price, order.qty);
         } else if (order.price == orderBook.bestAsk.price) {
             orderBook.bestAsk.totalVolume += order.qty;
             orderBook.bestAsk.orders.push_back(order);
-//            publishTopOfBook(order.symbol, 'S', order.price, orderBook.bestAsk.totalVolume);
         }
-//        getTopOfBook(order.symbol, buy_order_books, sell_order_books, orderBook);
     }
 }
 
@@ -260,7 +264,7 @@ void deleteFromPriceLevel(const Order& order, PriceLevel& priceLevel) {
 }
 
 
-void handleCancelOrder(const Order& order, OrderBook &orderBook) {
+void handleCancelOrder(const Order& order, OrderBook &orderBook, ofstream &outputFile) {
     Order &orderToDelete = orderBook.orderMap[order.userOrderId];
     orderBook.orderMap.erase(order.userOrderId);
     if (orderToDelete.side == 'B') {
@@ -276,7 +280,7 @@ void handleCancelOrder(const Order& order, OrderBook &orderBook) {
 
             if(priceLevel.totalVolume == 0) {
                 orderBook.bestBid = it->second;
-                publishTopOfBuyBook(orderToDelete.symbol, tob, orderBook);
+                publishTopOfBuyBook(orderToDelete.symbol, tob, orderBook, outputFile);
             }
         }
 
@@ -293,7 +297,7 @@ void handleCancelOrder(const Order& order, OrderBook &orderBook) {
 
             if(priceLevel.totalVolume == 0) {
                 orderBook.bestAsk = it->second;
-                publishTopOfSellBook(orderToDelete.symbol, tob, orderBook);
+                publishTopOfSellBook(orderToDelete.symbol, tob, orderBook, outputFile   );
             }
         }
     }
@@ -306,7 +310,7 @@ string getTradeMessage(Trade &trade) {
     return tradeMessage;
 }
 
-void handleMatch(const Order& order, vector<Trade>& trades, OrderBook &orderBook) {
+void handleMatch(const Order& order, vector<Trade>& trades, OrderBook &orderBook, ofstream &outputFile) {
     // Matching logic
 //    cout<<"Matching logic"<<endl;
     BuyBook buyBook = orderBook.buyBook[order.symbol];
@@ -327,6 +331,7 @@ void handleMatch(const Order& order, vector<Trade>& trades, OrderBook &orderBook
                     sellOrder.price,
                     tradeQty
             };
+            outputFile << getTradeMessage(trade) << endl;
             cout<< getTradeMessage(trade) << endl;
 
             trades.push_back(trade);
@@ -351,14 +356,14 @@ void handleMatch(const Order& order, vector<Trade>& trades, OrderBook &orderBook
 }
 
 void processOrder(const Order& order, vector<Trade>& trades,
-                  mutex& orderBooksMutex, OrderBook &orderBook) {
+                  mutex& orderBooksMutex, OrderBook &orderBook, ofstream &outputFile) {
     lock_guard<mutex> lock(orderBooksMutex);
     if (order.type == OrderType::NEW) {
-        handleNewOrder(order, orderBook);
+        handleNewOrder(order, orderBook, outputFile);
     } else if (order.type == OrderType::CANCEL) {
-        handleCancelOrder(order, orderBook);
+        handleCancelOrder(order, orderBook, outputFile);
     }
-    handleMatch(order, trades, orderBook);
+    handleMatch(order, trades, orderBook, outputFile);
 }
 
 Order parseOrder(const std::vector<std::string>& inputLine) {
@@ -397,55 +402,22 @@ void processRequest(string line, vector<Trade> &trades, mutex& orderBooksMutex,
         Order order = { OrderType::NEW, stoi(inputLine[1]), stoi(inputLine[6]),
                         inputLine[2], stoi(inputLine[3]), stoi(inputLine[4]),
                         inputLine[5][0]};
-        processOrder(order, trades, orderBooksMutex, orderBook);
-        publishOrderAcknowledgement(order.user, order.userOrderId);
-        getTopOfBook(inputLine[2], orderBook);
+        processOrder(order, trades, orderBooksMutex, orderBook, outputFile);
+        publishOrderAcknowledgement(order.user, order.userOrderId, outputFile);
+        updateTopOfBook(inputLine[2], orderBook, outputFile);
         return;
     } else if (inputLine[0] == "C") {
         Order order = { OrderType::CANCEL, stoi(inputLine[1]), stoi(inputLine[2]),
                         "", 0, 0, ' '};
-        processOrder(order, trades, orderBooksMutex, orderBook);
-        publishCancelAcknowledgement(order.user, order.userOrderId);
-        getTopOfBook(inputLine[2], orderBook);
+        processOrder(order, trades, orderBooksMutex, orderBook, outputFile);
+        publishCancelAcknowledgement(order.user, order.userOrderId, outputFile);
+        updateTopOfBook(inputLine[2], orderBook, outputFile);
     } else if (inputLine[0] == "F") {
         orderBook.flush();
         outputFile << "F" << endl;
         cout << "\n" << endl;
     }
 }
-
-
-int main2() {
-    string inputFileName = "input.csv";
-    ifstream file(inputFileName);
-    string line;
-
-    string outputFileName = "output.csv";
-    ofstream outputFile(outputFileName);
-
-    OrderBook orderBook;
-
-    vector<Trade> trades;
-    mutex orderBooksMutex;
-
-    while (getline(file, line)) {
-        processRequest(line, trades, orderBooksMutex, orderBook, outputFile);
-    }
-
-    // Print trades
-//    int count = 1;
-//    for (const auto& trade : trades) {
-//        cout<<count<<": ";
-//        count++;
-//        publishTrade(trade);
-//    }
-
-    return 0;
-}
-
-
-
-
 
 int main() {
     boost::asio::io_context io_context;
@@ -455,7 +427,7 @@ int main() {
 
     vector<Trade> trades;
     mutex orderBooksMutex;
-    string outputFileName = "output.csv";
+    string outputFileName = "output_file.csv";
     ofstream outputFile(outputFileName);
 
     while (true) {
